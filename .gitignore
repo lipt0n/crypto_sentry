@@ -1,0 +1,6 @@
+/target
+sentry.log
+.history
+Cargo.lock
+.env
+.sqllsrc.json
