@@ -25,6 +25,7 @@ mod db;
 mod exchange;
 mod helpers;
 mod routes;
+mod tick;
 mod webhook;
 #[async_std::main]
 async fn main() {
@@ -88,85 +89,34 @@ async fn start() {
     loop {
         let local: DateTime<Local> = Local::now();
         let loop_start_time = local.timestamp();
-        for pair in &pairs {
-            let avg_volume: f64 = match db::get_pair_avg_volume(&pool, pair.id).await {
-                Ok(v) => {
-                    if v < 0. {
-                        error!("pair {} avg volume < 0 !", pair.name);
-                    }
-                    v
-                }
-                Err(e) => {
-                    error!("error getting avg ticks :  {:?} ", e);
-                    -1.
-                }
-            };
-            let candles = match market.get_klines(pair.name.as_str(), "1m", 2, None, None) {
+        for pair in pairs.clone() {
+            let pool = pool.clone();
+            let candles = match market.get_klines(pair.name.as_str(), "1m", 1, None, None) {
                 Ok(klines) => match klines {
                     KlineSummaries::AllKlineSummaries(klines) => klines,
                 },
                 Err(e) => {
                     warn!("{:?}", e);
                     continue;
+                    //    continue;
                 }
             };
-            let mut last_candle: Option<KlineSummary> = None;
-            for candle in candles.into_iter() {
-                last_candle = Some(candle.clone());
-                info!("{} volume {}", pair.name, candle.volume);
+            let candle = candles.clone().into_iter().nth(0);
+            let p = pair.clone();
+            match candle {
+                Some(candle) => {
+                    task::spawn(async move {
+                        tick::main(pool, p, candle).await;
+                    });
 
-                match db::add_tick(
-                    &pool,
-                    pair.id,
-                    candle.open_time,
-                    candle.open,
-                    candle.close,
-                    candle.high,
-                    candle.low,
-                    candle.volume,
-                    candle.number_of_trades as i32,
-                )
-                .await
-                {
-                    Ok(_) => (),
-                    Err(e) => {
-                        error!("error inserting tick :  {:?} ", e);
-                        continue;
-                    }
-                };
-                if avg_volume < 0. {
-                    // no avg calculated , lets skip this
-                    continue;
-                }
-            }
-            match last_candle {
-                Some(last_candle) => {
-                    helpers::check_volume(
-                        "MINUTE",
-                        avg_volume,
-                        30.,
-                        pair.name.as_str(),
-                        last_candle.volume,
-                        pair.base.as_str(),
-                    )
-                    .await;
-                    if avg_volume * 30. < last_candle.volume && last_candle.open > last_candle.close
-                    {
-                        match exchange::buy(pair).await {
-                            Ok(r) => warn!("response from buy {} order: \n{}", pair.name, r),
-                            Err(e) => error!("error buying {} :\n{:?}", pair.name, e),
-                        };
-                    }
-                }
-                None => {
-                    error!("cant get last candle for {}", pair.name);
                     ()
                 }
+                None => (),
             }
         }
         let local: DateTime<Local> = Local::now();
         let loop_stop_time = local.timestamp();
-        let time_to_wait = (120 - (loop_stop_time - loop_start_time)).unsigned_abs();
+        let time_to_wait = (60 - (loop_stop_time - loop_start_time));
         warn!(
             "{} {} CANDLES. it took {}s. {} {}s",
             "INSERTED".green().bold(),
@@ -183,8 +133,10 @@ async fn start() {
 
             hourlyCheck(&pool).await;
         } else {
-            let sleep_time = Duration::from_secs(time_to_wait);
+            if time_to_wait > 0 {
+            let sleep_time = Duration::from_secs(time_to_wait.unsigned_abs());
             task::sleep(sleep_time).await;
+            }
         }
     }
 

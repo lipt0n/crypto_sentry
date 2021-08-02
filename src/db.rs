@@ -14,6 +14,7 @@ use std::error::Error;
 pub struct V {
     pub v: Option<BigDecimal>,
 }
+#[derive(Clone)]
 pub struct Pair {
     pub id: i32,
     pub base: String,
@@ -27,7 +28,7 @@ pub async fn establish_connection() -> Result<Pool<Postgres>, sqlx::Error> {
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(50)
         .connect(database_url.as_str())
         .await?;
     Ok(pool)
