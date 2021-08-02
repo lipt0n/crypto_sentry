@@ -144,13 +144,13 @@ async fn start() {
                     helpers::check_volume(
                         "MINUTE",
                         avg_volume,
-                        15.,
+                        30.,
                         pair.name.as_str(),
                         last_candle.volume,
                         pair.base.as_str(),
                     )
                     .await;
-                    if avg_volume * 15. < last_candle.volume && last_candle.open > last_candle.close
+                    if avg_volume * 30. < last_candle.volume && last_candle.open > last_candle.close
                     {
                         match exchange::buy(pair).await {
                             Ok(r) => warn!("response from buy {} order: \n{}", pair.name, r),

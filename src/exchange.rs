@@ -37,7 +37,7 @@ pub async fn buy(pair:&db::Pair) -> Result<String, Box<dyn Error>>{
     let bot_key = env::var("_3COMMAS_BOT_KEY").expect("_3COMMAS_BOT_KEY not set");
     let bot_secret = env::var("_3COMMAS_BOT_SECRET").expect("_3COMMAS_BOT_SECRET not set");
     let base_url = format!("https://api.3commas.io");
-    let param_url = format!("/public/api/ver1/bots/{}/start_new_deal", bot_id);
+    let param_url = format!("/public/api/ver1/bots/{}/start_new_deal?pair={}_{}&bot_id={}", bot_id,   pair.quote, pair.base, bot_id);
     let url= format!("{}{}", base_url, param_url);
 
 
@@ -52,7 +52,6 @@ pub async fn buy(pair:&db::Pair) -> Result<String, Box<dyn Error>>{
     let fancy_bytes = result.into_bytes();
     let code_bytes:&[u8] = fancy_bytes.as_slice();
     let signature= hex::encode(&code_bytes) ;
-    //let signature = from_utf8(&code_bytes).unwrap_or_default();
 
 
     #[derive(Debug, Serialize)]
@@ -61,7 +60,7 @@ pub async fn buy(pair:&db::Pair) -> Result<String, Box<dyn Error>>{
         bot_id:String
     }
     let data = Data {
-        pair: format!("{}/{}", pair.base, pair.quote),
+        pair: format!("{}_{}",  pair.quote, pair.base),
         bot_id: format!("{}",bot_id)
     };
 
@@ -69,7 +68,9 @@ pub async fn buy(pair:&db::Pair) -> Result<String, Box<dyn Error>>{
     let resp: String = ureq::post(url.as_str())
         .set("APIKEY", bot_key.as_str())
         .set("Signature", signature.as_str())
-        .send_json(ureq::json!(&data))?
+   //     .query("pair", data.pair.as_str())
+   //     .query("bot_id", bot_id.as_str())
+        .call()?
         .into_string()?;
 
     Ok(resp)
