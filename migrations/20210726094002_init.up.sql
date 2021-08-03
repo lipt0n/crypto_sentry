@@ -29,3 +29,5 @@ ALTER TABLE ticks ADD CONSTRAINT fk_ticks_pairs
       REFERENCES pairs(id)
       on delete cascade
       on update cascade ;
+
+CREATE INDEX ticks_pair_id_idx ON public.ticks (pair_id,volume);

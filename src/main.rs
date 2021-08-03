@@ -2,10 +2,15 @@
 extern crate log;
 #[macro_use]
 extern crate rocket;
+use futures::join;
+
+use async_std::future;
 
 extern crate simplelog;
+
 use sqlx::{pool::Pool, Postgres};
 use ureq;
+use futures::future::join_all;
 
 use async_std::task;
 use std::time::Duration;
@@ -37,7 +42,7 @@ async fn main() {
             ColorChoice::Auto,
         ),
         WriteLogger::new(
-            LevelFilter::Info,
+            LevelFilter::Warn,
             Config::default(),
             File::create("sentry.log").unwrap(),
         ),
@@ -89,31 +94,22 @@ async fn start() {
     loop {
         let local: DateTime<Local> = Local::now();
         let loop_start_time = local.timestamp();
+        let mut handles = vec![];
         for pair in pairs.clone() {
             let pool = pool.clone();
-            let candles = match market.get_klines(pair.name.as_str(), "1m", 1, None, None) {
-                Ok(klines) => match klines {
-                    KlineSummaries::AllKlineSummaries(klines) => klines,
-                },
-                Err(e) => {
-                    warn!("{:?}", e);
-                    continue;
-                    //    continue;
-                }
-            };
-            let candle = candles.clone().into_iter().nth(0);
-            let p = pair.clone();
-            match candle {
-                Some(candle) => {
-                    task::spawn(async move {
-                        tick::main(pool, p, candle).await;
-                    });
-
-                    ()
-                }
-                None => (),
+            handles.push( task::spawn(async move {
+                let p = pair.clone();
+                tick::main(pool, p).await;
+            }));
+            if handles.len()>=2 {
+                join_all(handles).await;
+                handles =  vec![];
             }
+           
         }
+      
+   //     join_all(handles).await;
+
         let local: DateTime<Local> = Local::now();
         let loop_stop_time = local.timestamp();
         let time_to_wait = (60 - (loop_stop_time - loop_start_time));

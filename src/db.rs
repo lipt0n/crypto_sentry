@@ -28,7 +28,8 @@ pub async fn establish_connection() -> Result<Pool<Postgres>, sqlx::Error> {
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPoolOptions::new()
-        .max_connections(50)
+        .max_connections(5)
+        .connect_timeout(Duration::from_secs(60))
         .connect(database_url.as_str())
         .await?;
     Ok(pool)
@@ -167,7 +168,7 @@ pub async fn get_pair_avg_volume(
         Some(v) => v.to_f64().unwrap(),
         None => -1.,
     };
-    info!("checking avg for {} from {:?} till now. avg: {} ", pair_id, NaiveDateTime::from_timestamp(timestamp, 0), r);
+  //  info!("checking avg for {} from {:?} till now. avg: {} ", pair_id, NaiveDateTime::from_timestamp(timestamp, 0), r);
 
     Ok(r)
 }
