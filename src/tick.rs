@@ -4,6 +4,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 use sqlx::{pool::Pool, postgres::PgPoolOptions, Postgres};
 use colored::*;
 use chrono::prelude::*;
+use std::env;
 
 use std::error::Error;
 use rand::Rng;
@@ -77,7 +78,8 @@ pub async fn main(pair: db::Pair, avg_volume:f64) -> Result<KlineSummary,TickErr
                 .await;
                 // buy in real account (green candle)
                 if avg_volume * 30. < candle.volume && candle.open < candle.close {
-                    match exchange::buy(&pair).await {
+                    let bot_id = env::var("_3COMMAS_BOT_ID").expect("_3COMMAS_BOT_ID not set");
+                    match exchange::buy(&pair, bot_id).await {
                         Ok(r) => warn!("{} {}  \n","----------- BOUGHT ".green().bold(), pair.name),
                         Err(ureq::Error::Status(code, response)) => {
                             /* the server returned an unexpected status
@@ -86,17 +88,18 @@ pub async fn main(pair: db::Pair, avg_volume:f64) -> Result<KlineSummary,TickErr
                         },
                         Err(e) => error!("error buying {} :\n{}\n{:?}", pair.name,e, e),
                     };
+                    exchange::buy(&pair, String::from("5343834")).await; // small profit bot
                 }
                 // buy for paper account (red candle)
                 if avg_volume * 30. < candle.volume && candle.open > candle.close {
-                    match exchange::buy_test(&pair).await {
+                    match exchange::buy(&pair, format!("5320720") ).await {
                         Ok(r) => warn!("test red BOUGHT {} ", pair.name),
                         Err(e) => warn!("error buying {}", pair.name),
                     };
                 }
                 // buy for paper account (green candle)
                 if avg_volume * 30. < candle.volume && candle.open < candle.close {
-                    match exchange::buy_test2(&pair).await {
+                    match exchange::buy(&pair,  String::from("5320761")).await {
                         Ok(r) => warn!("test green BOUGHT {} ", pair.name),
                         Err(e) => warn!("error buying {} ", pair.name),
                     };

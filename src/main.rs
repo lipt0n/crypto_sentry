@@ -282,13 +282,13 @@ async fn hourlyCheck(pool: &Pool<Postgres>) {
         match last_candle {
             Some(candle) => {
                 if avg_volume * 5. < last_volume && candle.open > candle.close {
-                    match exchange::buy_test_hour_red(&pair).await {
+                    match exchange::buy(&pair, String::from("5321172")).await {
                         Ok(r) => warn!("BOUGHT {}  \n{}", pair.name, r),
                         Err(e) => error!("error buying {} :\n{:?}", pair.name, e),
                     };
                 }
                 if avg_volume * 5. < last_volume && candle.open < candle.close {
-                    match exchange::buy_test_hour_green(&pair).await {
+                    match exchange::buy(&pair,  String::from("5321168" )).await {
                         Ok(r) => warn!("BOUGHT {}  \n{}", pair.name, r),
                         Err(e) => error!("error buying {} :\n{:?}", pair.name, e),
                     };
