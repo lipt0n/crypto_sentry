@@ -29,7 +29,12 @@ pub async fn establish_connection() -> Result<Pool<Postgres>, sqlx::Error> {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect_timeout(Duration::from_secs(60))
+        .min_connections(0)
+        .max_lifetime(Duration::from_secs(120))
+        .idle_timeout(Duration::from_secs(120))
+
+     //.connect_timeout(Duration::from_secs(60))
+     .test_before_acquire(true)
         .connect(database_url.as_str())
         .await?;
     Ok(pool)
