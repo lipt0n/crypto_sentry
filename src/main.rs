@@ -143,7 +143,7 @@ async fn start() {
                  candles.insert( id,  candle);
                 }
                 Err(e)=>{
-
+                    warn!("error geting candle for {}", id);
                 }
             };
         }
@@ -152,7 +152,7 @@ async fn start() {
         let loop_stop_time = local.timestamp();
 
         warn!(
-            "candles collected in {} s",
+            "{} candles collected in {} s", candles.len(),
             loop_stop_time - loop_start_time
         );
 
