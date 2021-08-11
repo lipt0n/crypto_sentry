@@ -47,6 +47,7 @@ pub async fn main(pair: db::Pair, avg_volume: f64, avg_price:f64, avg_trades:i64
     // warn!("{} avg volume: {}",pair.name, avg_volume);
     let candle = candle.kline;
     let diff = env::var("DIFF").unwrap_or_else(|_| String::from("30")).parse::<f64>().unwrap_or_else(|_| 30.);
+    let period = env::var("PERIOD").unwrap_or_else(|_| String::from("5m"));
 
     
      
@@ -54,7 +55,7 @@ pub async fn main(pair: db::Pair, avg_volume: f64, avg_price:f64, avg_trades:i64
 
             if avg_volume > 0. {
                 helpers::check_volume(
-                    "MINUTE",
+                    period.as_str(),
                     avg_volume,
                     avg_price, avg_trades,
                     diff,

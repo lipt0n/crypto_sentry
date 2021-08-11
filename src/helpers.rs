@@ -25,7 +25,7 @@ pub async fn check_volume(
         let transaction_per_vol_diff =  percentage(transactions_per_volume, avg_transaction_per_volume);
         let msg = format!(
             "
-        1 {} INTERVAL
+        {} INTERVAL
         VOLUME MOVE DETECTED FOR {} by {:.1} %
         NO OF TRANSACTIONS PER VOL CHANGE: {:.1} %
         AVG VOLUME: {:.1}
@@ -48,11 +48,7 @@ pub async fn check_volume(
        
         );
         warn!("{}", msg.as_str());
-        if interval == "HOUR" {
-            send_msg(msg.as_str(), base_asset, interval).await;
-        } else {
-            send_msg(msg.as_str(), base_asset, interval).await;
-        }
+        send_msg(msg.as_str(), base_asset, interval).await;
     }
 }
 pub async fn send_msg(msg: &str, base_asset: &str, interval: &str) -> Result<String, Box<dyn Error>> {
