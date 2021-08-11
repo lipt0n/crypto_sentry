@@ -14,6 +14,12 @@ use std::error::Error;
 pub struct V {
     pub v: Option<BigDecimal>,
 }
+
+pub struct PAIR_AVG {
+    pub v: Option<BigDecimal>,
+    pub p: Option<BigDecimal>,
+    pub t: Option<BigDecimal>
+}
 #[derive(Clone)]
 pub struct Pair {
     pub id: i32,
@@ -173,6 +179,35 @@ pub async fn get_pair_avg_volume(
         Some(v) => v.to_f64().unwrap(),
         None => -1.,
     };
+  //  info!("checking avg for {} from {:?} till now. avg: {} ", pair_id, NaiveDateTime::from_timestamp(timestamp, 0), r);
+
+    Ok(r)
+}
+pub async fn get_pair_avg_data(
+    pool: &Pool<Postgres>,
+    pair_id: i32,
+) -> Result<(f64,f64,i64), Box<dyn Error>> {
+    let local: DateTime<Local> = Local::now();
+    let two_days_is_s:i64 = 172_800;
+    let timestamp = local.timestamp() - two_days_is_s;
+    let result = sqlx::query_as!(
+        PAIR_AVG,
+        "
+        SELECT 
+        AVG(volume) as v,
+        AVG(close) as p,
+        AVG(orders) as t
+        FROM ticks
+        WHERE   pair_id = $1
+        AND     timestamp > $2
+    ",
+        pair_id,
+        NaiveDateTime::from_timestamp(timestamp, 0)
+    )
+    .fetch_one(pool)
+    .await?;
+    let r = (result.v.unwrap().to_f64().unwrap(),result.p.unwrap().to_f64().unwrap() ,result.t.unwrap().to_i64().unwrap() );
+
   //  info!("checking avg for {} from {:?} till now. avg: {} ", pair_id, NaiveDateTime::from_timestamp(timestamp, 0), r);
 
     Ok(r)

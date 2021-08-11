@@ -15,7 +15,7 @@ use binance::api::*;
 use binance::market::*;
 use binance::model::{KlineSummaries, KlineSummary, Symbol};
 use cached::proc_macro::cached;
-
+use binance::model::*;
 #[derive(Debug)]
 pub enum TickError {
     NoKline,
@@ -23,58 +23,50 @@ pub enum TickError {
 
 // 10800 s = 3h
 //#[cached(time=10800, size=300, key = "String", convert = r#"{ format!("{}", pair.name) }"#)]
-pub async fn get_avg(pool: &Pool<Postgres>, pair: db::Pair) -> f64 {
-    let result = match db::get_pair_avg_volume(&pool, pair.id).await {
-        Ok(v) => {
+pub async fn get_avg(pool: &Pool<Postgres>, pair: db::Pair) -> (f64,f64, i64){
+    let result = match db::get_pair_avg_data(&pool, pair.id).await {
+        Ok(res) => {
+            let (v,p,t) = res;
             if v < 0. {
                 error!("pair {} avg volume < 0 !", pair.name);
             }
-            v
+            res
         }
         Err(e) => {
             error!("error getting avg ticks :  {:?} ", e);
-            -1.
+            (-1.,-1.,-1)
         }
     };
-    warn!("getting AVG for {} - {}", pair.name, result);
+  //  warn!("getting AVG for {} - {:?}", pair.name, result);
 
     result
 }
 
-pub async fn main(pair: db::Pair, avg_volume: f64) -> Result<KlineSummary, TickError> {
+pub async fn main(pair: db::Pair, avg_volume: f64, avg_price:f64, avg_trades:i64, candle:KlineEvent) ->() {
     //let avg_volume = get_avg(&pool, pair.clone()).await;
     // warn!("{} avg volume: {}",pair.name, avg_volume);
-    let market: Market = Binance::new(None, None);
+    let candle = candle.kline;
+    let diff = env::var("DIFF").unwrap_or_else(|_| String::from("30")).parse::<f64>().unwrap_or_else(|_| 30.);
 
-    let candles = match market.get_klines(pair.name.as_str(), "1m", 1, None, None) {
-        Ok(klines) => match klines {
-            KlineSummaries::AllKlineSummaries(klines) => klines,
-        },
-        Err(e) => {
-            error!("NO KLINE FOR {} \n {:?}", pair.name, e);
-            return Err(TickError::NoKline);
-        }
-    };
-
-    let candle = candles.clone().into_iter().nth(0);
-
-    let result = match candle {
-        Some(candle) => {
+    
+     
             info!("{} volume {}", pair.name, candle.volume);
 
-            let candle_before = candles.clone().into_iter().nth(0).unwrap();
             if avg_volume > 0. {
                 helpers::check_volume(
                     "MINUTE",
                     avg_volume,
-                    30.,
+                    avg_price, avg_trades,
+                    diff,
                     pair.name.as_str(),
-                    candle.volume,
+                    candle.volume.parse::<f64>().unwrap(),
                     pair.base.as_str(),
+                    candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap(),
+                    candle.number_of_trades as i64
                 )
                 .await;
-                // buy in real account (green candle)
-                if avg_volume * 30. < candle.volume && candle.open < candle.close {
+               // buy in real account (green candle)
+                if avg_volume * diff < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() {
                     let bot_id = env::var("_3COMMAS_BOT_ID").expect("_3COMMAS_BOT_ID not set");
                     match exchange::buy(&pair, bot_id).await {
                         Ok(r) => {
@@ -95,18 +87,34 @@ pub async fn main(pair: db::Pair, avg_volume: f64) -> Result<KlineSummary, TickE
                     };
                     exchange::buy(&pair, String::from("5343834")).await; // small profit bot
                 }
+                // big volume move
+                if avg_volume * diff * 3. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() {
+                    exchange::buy(&pair, String::from("5344546")).await;
+                }
+                // SUPER big volume move
+                if avg_volume * diff * 6. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() {
+                    exchange::buy(&pair, String::from("5345149")).await;
+                }
+                // under avg price  
+                // if avg_volume * 30. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() && avg_price   <= candle.close.parse::<f64>().unwrap() {
+                //     exchange::buy(&pair, String::from("5345093")).await;
+                // }
+                 // big volume move + under avg price  
+                 if avg_volume * diff * 3. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap()  && avg_price   <= candle.close.parse::<f64>().unwrap() {
+                    exchange::buy(&pair, String::from("5345393")).await;
+                }
                 // buy for paper account (red candle)
-                if avg_volume * 30. < candle.volume && candle.open > candle.close {
+                if avg_volume * diff < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() > candle.close.parse::<f64>().unwrap() {
                     exchange::buy(&pair, format!("5320720")).await;
                 }
                 // buy for paper account (green candle)
-                if avg_volume * 30. < candle.volume && candle.open < candle.close {
+                if avg_volume * diff < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() {
                     exchange::buy(&pair, String::from("5320761")).await;
                 }
             }
-            candle
-        }
-        None => return Err(TickError::NoKline),
-    };
-    Ok(result)
+            
+       
+    
+    ()
+
 }
