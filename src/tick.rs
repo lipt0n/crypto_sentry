@@ -86,32 +86,9 @@ pub async fn main(pair: db::Pair, avg_volume: f64, avg_price:f64, avg_trades:i64
                         }
                         Err(e) => error!("error buying {} :\n{}\n{:?}", pair.name, e, e),
                     };
-                    exchange::buy(&pair, String::from("5343834")).await; // small profit bot
+                   // exchange::buy(&pair, String::from("5343834")).await; // small profit bot
                 }
-                // big volume move
-                if avg_volume * diff * 3. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() {
-                    exchange::buy(&pair, String::from("5344546")).await;
-                }
-                // SUPER big volume move
-                if avg_volume * diff * 6. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() {
-                    exchange::buy(&pair, String::from("5345149")).await;
-                }
-                // under avg price  
-                // if avg_volume * 30. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() && avg_price   <= candle.close.parse::<f64>().unwrap() {
-                //     exchange::buy(&pair, String::from("5345093")).await;
-                // }
-                 // big volume move + under avg price  
-                 if avg_volume * diff * 3. < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap()  && avg_price   <= candle.close.parse::<f64>().unwrap() {
-                    exchange::buy(&pair, String::from("5345393")).await;
-                }
-                // buy for paper account (red candle)
-                if avg_volume * diff < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() > candle.close.parse::<f64>().unwrap() {
-                    exchange::buy(&pair, format!("5320720")).await;
-                }
-                // buy for paper account (green candle)
-                if avg_volume * diff < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() {
-                    exchange::buy(&pair, String::from("5320761")).await;
-                }
+               
             }
             
        

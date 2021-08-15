@@ -41,8 +41,10 @@ mod webhook;
 #[async_std::main]
 async fn main() {
     let period = env::var("PERIOD").unwrap_or_else(|_| String::from("5m"));
-    let diff = env::var("DIFF").unwrap_or_else(|_| String::from("30")).parse::<f64>().unwrap_or_else(|_| 30.);
-
+    let diff = env::var("DIFF")
+        .unwrap_or_else(|_| String::from("30"))
+        .parse::<f64>()
+        .unwrap_or_else(|_| 30.);
 
     CombinedLogger::init(vec![
         TermLogger::new(
@@ -54,12 +56,15 @@ async fn main() {
         WriteLogger::new(
             LevelFilter::Warn,
             Config::default(),
-            File::create(format!("sentry_{}.log",period)).unwrap(),
+            File::create(format!("sentry_{}.log", period)).unwrap(),
         ),
     ])
     .unwrap();
 
-    warn!("program started for {} candle and {} diff !", period, diff);
+    warn!(
+        "* program started for {} candle and {} diff !",
+        period, diff
+    );
     let help = format!(
         "
     {} 
@@ -86,44 +91,69 @@ async fn main() {
 
 async fn start() {
     dotenv().ok();
-
+    warn!("* connecting to db");
     //send_msg("Program started. sentry is watching ...").await;
     let pool = db::establish_connection()
         .await
         .expect("Can't connect to DB  😢");
-    info!("connected to db 😃 : {:?}", pool);
-
+    warn!("* connected to db 😃 : {:?}", pool);
+    warn!("* geting pairs");
     let pairs = match db::get_pairs(&pool).await {
         Ok(p) => p,
         Err(e) => panic!("Error geting pairs {:?}", e),
     };
     // filter pairs with low 24h volume
     let min_usd_24h_volume = 100_000;
- 
-
-
-
-
 
     let period = env::var("PERIOD").unwrap_or_else(|_| String::from("5m"));
-    let diff = env::var("DIFF").unwrap_or_else(|_| String::from("30")).parse::<f64>().unwrap_or_else(|_| 30.);
-    let mut avg_volumes: HashMap<i32, (f64, f64, i64)> = get_avg_volumes(pairs.clone(), period.clone());
-    warn!("Getting avgs");
+    let increse = env::var("INCRESE").unwrap_or_else(|_| String::from("1")).parse::<f64>().unwrap_or_else(|_| 1.);
+    let diff = env::var("DIFF")
+        .unwrap_or_else(|_| String::from("30"))
+        .parse::<f64>()
+        .unwrap_or_else(|_| 30.);
+    warn!(
+        "* getting avgs for {} pairs. it can take few minutes",
+        pairs.clone().len()
+    );
+
+    let avg_volumes: HashMap<i32, (f64, f64, i64)> = get_avg_volumes(pairs.clone(), period.clone());
     // for pair in pairs.clone() {
     //     let avg_volume = tick::get_avg(&pool, pair.clone()).await;
     //     avg_volumes.insert(pair.id + 0, avg_volume);
     // }
     let avg_volumes_copy = avg_volumes.clone();
 
-    let mut endpoints: Vec<String> = Vec::new();
+    let endpoints: Vec<String> = pairs
+        .clone()
+        .into_iter()
+        .map(|p| format!("{}@kline_{}", p.name.to_lowercase(), period.to_lowercase()))
+        .collect();
 
+    warn!("* all done, now lets connect to binance");
 
     let keep_running = AtomicBool::new(true);
-    let mut queueue :HashMap<i32,i32> = HashMap::new();
+    let mut queueue: HashMap<i32, i32> = HashMap::new();
+    let mut counter = 0;
     let mut web_socket: WebSockets<'_> = WebSockets::new(|event: WebsocketEvent| {
         match event {
             WebsocketEvent::Kline(kline_event) => {
-               
+                counter = counter + 1;
+
+                if counter > 10000 {
+                    counter = 0;
+                    println!(
+                        "interval heartbeat debug check for {} candle and {} diff 
+                        Symbol: {}, open: {} close: {} high: {}, low: {}, volume: {}, is closed: {}",
+                        period, diff,
+                        kline_event.kline.symbol,
+                        kline_event.kline.open,
+                        kline_event.kline.close,
+                        kline_event.kline.low,
+                        kline_event.kline.high,
+                        kline_event.kline.volume,
+                        kline_event.kline.is_final_bar
+                    );
+                }
                 let open = kline_event.kline.open.parse::<f64>().unwrap();
                 let close = kline_event.kline.close.parse::<f64>().unwrap();
                 let high = kline_event.kline.high.parse::<f64>().unwrap();
@@ -135,18 +165,20 @@ async fn start() {
                 let pair = iter.find(|p| p.name == kline_event.kline.symbol).unwrap();
                 let candle = kline_event.kline.clone();
                 let p = pair.clone();
-                let (avg_volume, avg_price, avg_trades) =
-                            *avg_volumes_copy.get(&pair.id).unwrap();
+                let (avg_volume, avg_price, avg_trades) = *avg_volumes_copy.get(&pair.id).unwrap();
                 if queueue.contains_key(&pair.id) {
                     let counter = queueue.get(&pair.id).unwrap() - 1;
                     queueue.remove(&pair.id);
                     if counter > 0 {
                         queueue.insert(pair.id, counter);
                     }
-                    
-                    
                 }
-                if !queueue.contains_key(&pair.id) && avg_volume * diff < candle.volume.parse::<f64>().unwrap() && candle.open.parse::<f64>().unwrap() < candle.close.parse::<f64>().unwrap() &&  candle.close.parse::<f64>().unwrap() >=  candle.high.parse::<f64>().unwrap() {
+                if !queueue.contains_key(&pair.id)
+                    && avg_volume * diff < volume
+                    && open < close
+                    && close >= high
+                    && (helpers::percentage(close,open)-100.) > increse
+                {
                     println!(
                         "Symbol: {}, open: {} close: {} high: {}, low: {}, volume: {}, is closed: {}",
                         kline_event.kline.symbol,
@@ -158,21 +190,16 @@ async fn start() {
                         kline_event.kline.is_final_bar
                     );
                     task::block_on(async {
-                        
-                        let r = tick::main(p, avg_volume, avg_price, avg_trades, kline_event.clone()).await;
+                        let r =
+                            tick::main(p, avg_volume, avg_price, avg_trades, kline_event.clone())
+                                .await;
                     });
-                        queueue.insert(pair.id, 10);
+                    queueue.insert(pair.id, 10);
                 }
-                if kline_event.kline.is_final_bar  && period.clone() == "5m" {
-                    // println!(
-                    //     "Symbol: {}, high: {}, low: {}, volume: {}, is closed: {}",
-                    //     kline_event.kline.symbol,
-                    //     kline_event.kline.low,
-                    //     kline_event.kline.high,
-                    //     kline_event.kline.volume,
-                    //     kline_event.kline.is_final_bar
-                    // );
-    
+
+                if kline_event.kline.is_final_bar && period.clone() == "5m" {
+
+
                     let x = task::block_on(async {
                         db::add_tick(
                             &pool,
@@ -189,14 +216,17 @@ async fn start() {
                     });
                 }
             }
-            _ => (),
+            other => {
+                error!("geting cline response does not match : {:?}", other);
+                ()
+            }
         };
         Ok(())
     });
 
     match web_socket.connect_multiple_streams(&endpoints) {
         Ok(msg) => {
-            warn!("connected to binance!");
+            warn!("* connected to binance!");
         }
         Err(e) => {
             error!("Error connecting to binance : \n {:?}", e);
@@ -205,6 +235,7 @@ async fn start() {
     if let Err(e) = web_socket.event_loop(&keep_running) {
         error!("Error in BINANCE EVENT LOOP: {:?}", e);
     }
+    error!("DISCONNECTING FROM BINANCE!!!");
     web_socket.disconnect().unwrap();
 
     // loop {
@@ -415,13 +446,12 @@ async fn hourlyCheck(pool: &Pool<Postgres>) {
     }
 }
 
-
-fn get_avg_volumes(pairs:Vec<Pair>, period:String) -> HashMap<i32,(f64,f64,i64)> {
-
+fn get_avg_volumes(pairs: Vec<Pair>, period: String) -> HashMap<i32, (f64, f64, i64)> {
     let market: Market = Binance::new(None, None);
     let mut avg_volumes: HashMap<i32, (f64, f64, i64)> = HashMap::new();
     for pair in pairs {
-        let candles = match market.get_klines(pair.name.as_str(), period.as_str(), 1000, None, None) {
+        let candles = match market.get_klines(pair.name.as_str(), period.as_str(), 1000, None, None)
+        {
             Ok(klines) => match klines {
                 KlineSummaries::AllKlineSummaries(klines) => klines,
             },
@@ -434,22 +464,17 @@ fn get_avg_volumes(pairs:Vec<Pair>, period:String) -> HashMap<i32,(f64,f64,i64)>
         let candles_len_i64 = candles.len() as i64;
         let mut last_volume = -1.;
         let mut last_candle: Option<KlineSummary> = None;
-        let avg_volume: f64 = candles.clone()
+        let avg_volume: f64 =
+            candles.clone().into_iter().map(|k| k.volume).sum::<f64>() / candles_len;
+        let avg_close: f64 =
+            candles.clone().into_iter().map(|k| k.close).sum::<f64>() / candles_len;
+        let avg_orders: i64 = candles
+            .clone()
             .into_iter()
-            .map(|k| k.volume)
-            .sum::<f64>()
-            / candles_len;
-        let avg_close: f64 = candles.clone()
-        .into_iter()
-        .map(|k| k.close)
-        .sum::<f64>()
-        / candles_len;
-        let avg_orders: i64 = candles.clone()
-        .into_iter()
-        .map(|k| k.number_of_trades)
-        .sum::<i64>() / candles_len_i64;
-        avg_volumes.insert(pair.id, (avg_volume,avg_close,avg_orders));
-        
+            .map(|k| k.number_of_trades)
+            .sum::<i64>()
+            / candles_len_i64;
+        avg_volumes.insert(pair.id, (avg_volume, avg_close, avg_orders));
     }
     avg_volumes
 }
